@@ -382,42 +382,11 @@ def execute_on_ip(username, ip, credential, command, tool_list=None, show_output
     if not RUN_ALL:
         return (ip, tool)
 
-def print_usage():
-    msg = f"""
-Usage:
-  python3 exec_across_ips.py [options] <ip_range> <username> <credential> [command]
-  python3 exec_across_ips.py [options] <ip_range> -f <credfile> [command]
-
-Options:
-  -v                   Verbose output
-  -o                   Show successful command output
-  -f <credential_list> Use list of provided credentials
-  --threads <n>        Number of concurrent threads (default: 10)
-  --tools <list>       Comma-separated list of tools to try in order
-  --timeout <seconds>  Number of seconds to wait on commands before timeout (default: 15)
-  --run-all            Run all tools, often running the desired command multiple times
-  --skip-portscan      Skip port scanning and attempt all tools
-
-Valid tools: {', '.join(VALID_TOOLS)}
-  Aliases: evilwinrm, evil-winrm -> winrm
-
-Credential file format (newline-separated):
-  user1
-  user1_password
-  user2
-  user2_password2
-
-Examples:
-  python3 exec_across_ips.py 192.168.1.1-10 admin Password123 whoami --timeout 30
-  python3 exec_across_ips.py --tools psexec,winrm,wmi 10.0.0.1-50 admin Pass123
-  python3 exec_across_ips.py --threads 20 192.168.1.0-255 -f creds.txt 'net user' --skip-portscan
-"""
-    print(msg.strip())
-
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Execute commands across an IP range using multiple Windows RCE methods",
-        formatter_class=argparse.RawTextHelpFormatter
+        formatter_class=argparse.RawTextHelpFormatter,
+        usage="%(prog)s ip_range username credential command [-h] [-v] [-o] [--threads NUM_THREADS] [--timeout TIMEOUT_SECONDS] [--tools LIST] [--run-all] [--skip-portscan] [-f CRED_FILE]"
     )
 
     parser.add_argument("-v", action="store_true", help="Verbose output")

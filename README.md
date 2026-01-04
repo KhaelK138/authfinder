@@ -14,7 +14,7 @@ A tool for executing commands across multiple Windows systems using various remo
   - SSH (NetExec)
   - MSSQL (Impacket)
 - **Multi-threaded**: Execute commands across multiple hosts simultaneously
-- **Flexible Credentials**: Support for password files with multiple user/password pairs
+- **Automatic Pass-the-Hash**: Just paste the NTLM hash as the credential
 
 ## Installation
 

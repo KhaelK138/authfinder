@@ -19,7 +19,7 @@ A tool for executing commands across multiple Windows systems using various remo
 ## Installation
 
 ```bash
-pip install exec-across-windows
+pipx install exec-across-windows
 ```
 
 ### External Dependencies

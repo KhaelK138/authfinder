@@ -2,6 +2,8 @@
 
 A tool for executing commands across multiple Windows systems using various remote execution methods. Automatically tries multiple techniques until one succeeds, based on return codes and output. Makes executing commands given credentials a hell of a lot easier.
 
+Big thanks to NetExec, Impacket, and Evil-Winrm, as this tool just essentially acts as a wrapper around those (making it more of a script, I suppose).
+
 ## Features
 
 - **Multiple RCE Methods**: Automatically tries various Windows remote execution techniques:

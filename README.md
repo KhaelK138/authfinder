@@ -1,4 +1,4 @@
-# exec-across-windows
+# AuthFinder
 
 A tool for executing commands across multiple Windows systems using various remote execution methods. Automatically tries multiple techniques until one succeeds, based on return codes and output. Makes executing commands given credentials a hell of a lot easier.
 
@@ -21,7 +21,7 @@ Big thanks to NetExec, Impacket, and Evil-Winrm, as this tool just essentially a
 ## Installation
 
 ```bash
-pipx install exec-across-windows
+pipx install authfinder
 ```
 
 ### External Dependencies
@@ -45,13 +45,13 @@ gem install evil-winrm
 
 ```bash
 # Execute command on single host
-exec-across-windows 192.168.1.10 administrator Password123 whoami
+authfinder 192.168.1.10 administrator Password123 whoami
 
 # Execute across IP range of 192.168.1.1 to 192.168.1.50
-exec-across-windows 192.168.1.1-50 admin Pass123 "net user"
+authfinder 192.168.1.1-50 admin Pass123 "net user"
 
 # Use hash instead of password
-exec-across-windows 10.0.0.1-10 admin :{32-bit-hash} whoami
+authfinder 10.0.0.1-10 admin :{32-bit-hash} whoami
 ```
 
 ### IP Range Format

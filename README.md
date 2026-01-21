@@ -50,7 +50,7 @@ authfinder 192.168.1.10 administrator Password123 whoami
 # Execute across IP range of 192.168.1.1 to 192.168.1.50
 authfinder 192.168.1.1-50 admin Pass123 "net user"
 
-# Use hash instead of password
+# Use nthash instead of password
 authfinder 10.0.0.1-10 admin :{32-bit-hash} whoami
 ```
 
@@ -58,6 +58,7 @@ authfinder 10.0.0.1-10 admin :{32-bit-hash} whoami
 
 Supports various formats:
 - Single IP: `192.168.1.10`
+- Multi-IP: `192.168.1.15,17,29,153` 
 - Range: `192.168.1.1-254`
 - Multiple ranges: `10.0.1-5.10-20` (expands to all combinations)
 - File with IP ranges: `targets.txt`
@@ -72,7 +73,7 @@ Password123!
 admin
 Pass123
 backup_admin
-:aad3b435b51404eeaad3b435b51404ee
+:12345678123456781234567812345678
 ```
 
 Lines starting with `#` are treated as comments. For NT hashes, use them directly as the password.

@@ -335,7 +335,7 @@ def run_chain(user, ip, credential, command, tool_list=None):
                 safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but this seems like a Linux machine, so the command didn't run.")
                 safe_print("  \033[33m[!]\033[0m Use \033[33m--linux\033[0m to run command across Linux machines.")
                 continue
-            if '[+]' in out and 'Executed command' not in out:
+            if '[+]' in out and '[+] Executed' not in out:
                 safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but seemingly failed to run command. Does the user have the necessary permissions?")
                 continue
             if rc == 0 and out == "":

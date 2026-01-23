@@ -515,7 +515,7 @@ def main():
     else:
         ips = parse_ip_range(args.ip_range)
 
-    if len(ips) < MAX_THREADS:
+    if len(ips) < MAX_THREADS and not args.threads:
         MAX_THREADS = len(ips)
 
     print(f"[*] Loaded {len(credential_list)} credential set(s)")

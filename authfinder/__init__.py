@@ -1,3 +1,3 @@
-"""authfinder: Execute commands across Windows systems using multiple RCE methods"""
+"""authfinder: Execute commands across Windows and Linux systems using multiple RCE methods"""
 
 __version__ = "1.1.0"

@@ -1,6 +1,6 @@
 # AuthFinder
 
-A tool for executing commands across multiple Windows systems using various remote execution methods. Automatically tries multiple techniques until one succeeds, based on return codes and output. Makes executing commands given credentials a hell of a lot easier.
+A tool for executing commands across Windows (and Linux) systems using various remote execution methods. Automatically tries multiple techniques until one succeeds, based on return codes and output. Makes executing commands given credentials a hell of a lot easier.
 
 Big thanks to NetExec, Impacket, and Evil-Winrm, as this tool just essentially acts as a wrapper around those (making it more of a script, I suppose).
 
@@ -17,6 +17,7 @@ Big thanks to NetExec, Impacket, and Evil-Winrm, as this tool just essentially a
   - MSSQL (Impacket)
 - **Multi-threaded**: Execute commands across multiple hosts simultaneously
 - **Automatic Pass-the-Hash**: Just paste the NTLM hash as the credential
+- **Linux Support**: Use `--linux` to attempt to run commands across linux machines instead, via SSH
 
 ## Installation
 
@@ -90,6 +91,7 @@ Options:
   --timeout <seconds>     Command timeout in seconds (default: 15)
   --run-all               Run all tools instead of stopping at first success
   --skip-portscan         Skip port scanning and attempt all tools
+  --linux                 Enables Linux-only mode, which uses SSH and ignores other tools
 ```
 
 

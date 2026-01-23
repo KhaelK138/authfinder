@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "authfinder"
-version = "1.1.3"
+version = "1.1.4"
 description = "Execute commands across Windows and Linux systems using multiple RCE methods (WinRM, SMB, WMI, RDP, SSH, MSSQL)"
 readme = "README.md"
 authors = [

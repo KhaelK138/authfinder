@@ -335,9 +335,13 @@ def run_chain(user, ip, credential, command, tool_list=None):
                 safe_print(f"  [-] For {ip}: {tool} failed.")
                 continue
 
-        if tool == "mssql" and "ERROR" in out:
-            safe_print(f"  [-] For {ip}: {tool} failed.")
-            continue
+        if tool == "mssql":
+            if "The EXECUTE permission was denied" in out:
+                safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but seemingly failed to run command. Does the user have the necessary permissions?")
+                continue
+            if "ERROR" in out:
+                safe_print(f"  [-] For {ip}: {tool} failed.")
+                continue
 
         # one-shotting using evil-winrm results in a return code of 1
         if rc == 0 or (tool in ("winrm", "winrm-ssl") and rc == 1 and "NoMethodError" in out): 
@@ -417,7 +421,7 @@ def parse_args():
         parser.error("Cannot specify username/password when using -f")
 
     if not args.file and (not args.username or not args.credential):
-        parser.error("Must supply either -f FILE or username + credential")
+        parser.error("Must supply either -f FILE or username and credential")
 
     return args
 

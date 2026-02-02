@@ -46,13 +46,13 @@ gem install evil-winrm
 
 ```bash
 # Execute command on single host
-authfinder 192.168.1.10 administrator Password123 whoami
+authfinder 192.168.1.10 -u administrator -p Password123 -c whoami
 
 # Execute across IP range of 192.168.1.1 to 192.168.1.50
-authfinder 192.168.1.1-50 admin Pass123 "net user"
+authfinder 192.168.1.1-50 -u admin -p Pass123 -c 'net user'
 
 # Use nthash instead of password
-authfinder 10.0.0.1-10 admin :{32-bit-hash} whoami
+authfinder 10.0.0.1-10 -u admin -p :{32-bit-hash} whoami
 ```
 
 ### IP Range Format

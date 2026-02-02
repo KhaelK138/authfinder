@@ -16,7 +16,7 @@ Big thanks to NetExec, Impacket, and Evil-Winrm, as this tool just essentially a
   - SSH (NetExec)
   - MSSQL (Impacket)
 - **Multi-threaded**: Execute commands across multiple hosts simultaneously
-- **Automatic Pass-the-Hash**: Just paste the NTLM hash as the credential
+- **Pass-the-Hash**: Use `-H` to pass an NTLM hash
 - **Linux Support**: Use `--linux` to attempt to run commands across linux machines instead, via SSH
 
 ## Installation
@@ -52,7 +52,10 @@ authfinder 192.168.1.10 -u administrator -p Password123 -c whoami
 authfinder 192.168.1.1-50 -u admin -p Pass123 -c 'net user'
 
 # Use nthash instead of password
-authfinder 10.0.0.1-10 -u admin -p :{32-bit-hash} whoami
+authfinder 10.0.0.1-10 -u admin -H :{32-bit-hash} -c whoami
+
+# Pass list of creds
+authfinder 10.0.0.1-10 -f creds.txt -c whoami
 ```
 
 ### IP Range Format

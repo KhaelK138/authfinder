@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "authfinder"
-version = "1.2.0"
+version = "1.2.1"
 description = "Execute commands across Windows and Linux systems using multiple RCE methods (WinRM, SMB, WMI, RDP, SSH, MSSQL)"
 readme = "README.md"
 authors = [
@@ -25,7 +25,9 @@ classifiers = [
 ]
 keywords = ["security", "pentest", "windows", "remote-execution", "winrm", "smb", "wmi", "rdp"]
 requires-python = ">=3.8"
-dependencies = []
+dependencies = [
+    "impacket",
+]
 
 [project.optional-dependencies]
 dev = [

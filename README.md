@@ -2,12 +2,12 @@
 
 A tool for executing commands across Windows (and Linux) systems using various remote execution methods. Automatically tries multiple techniques until one succeeds, based on return codes and output. Makes executing commands given credentials a hell of a lot easier.
 
-Big thanks to NetExec, Impacket, and Evil-Winrm, as this tool just essentially acts as a wrapper around those (making it more of a script, I suppose).
+Big thanks to NetExec & Impacket, as this tool just essentially acts as a wrapper around those (making it more of a script, I suppose).
 
 ## Features
 
 - **Multiple RCE Methods**: Automatically tries various Windows remote execution techniques:
-  - WinRM (HTTP/HTTPS)
+  - WinRM (NetExec)
   - PSExec (Impacket)
   - SMBExec (NetExec)
   - WMI (NetExec)
@@ -35,9 +35,6 @@ pipx install impacket
 
 # NetExec (for SMBExec, WMI, RDP, SSH)
 pipx install git+https://github.com/Pennyw0rth/NetExec
-
-# Evil-WinRM (for WinRM)
-gem install evil-winrm
 ```
 
 ## Usage
@@ -101,7 +98,7 @@ Options:
 ## Todo
 
 Add kerberos support lol
-- Requires supporting hostnames and configuring `/etc/krb5.conf` for tools like evil-winrm
+- Requires supporting hostnames and configuring `/etc/krb5.conf` 
 
 ## License
 

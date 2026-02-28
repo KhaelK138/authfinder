@@ -321,7 +321,6 @@ def run_chain(user, ip, credential, command, use_hash=False, tool_list=None):
                 safe_print(f"  [-] For {ip}: {tool} failed.")
                 continue
 
-        print("tool:", tool)
         if tool in NXC_TOOLS or tool == "atexec":
             if '[-]' in out:
                 if "Could not retrieve" in out:

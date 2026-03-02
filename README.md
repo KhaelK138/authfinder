@@ -11,7 +11,7 @@ Big thanks to NetExec & Impacket, as this tool just essentially acts as a wrappe
   - PSExec (Impacket)
   - SMBExec (NetExec)
   - WMI (NetExec)
-  - AtExec (Impacket)
+  - AtExec (NetExec)
   - RDP (NetExec)
   - SSH (NetExec)
   - MSSQL (Impacket)
@@ -30,10 +30,10 @@ pipx install authfinder
 This tool requires the following external tools to be installed:
 
 ```bash
-# Impacket (for PSExec, AtExec, MSSQL)
+# Impacket (for PSExec, MSSQL)
 pipx install impacket
 
-# NetExec (for SMBExec, WMI, RDP, SSH)
+# NetExec (for SMBExec, WMI, RDP...)
 pipx install git+https://github.com/Pennyw0rth/NetExec
 ```
 

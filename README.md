@@ -51,6 +51,9 @@ authfinder 192.168.1.1-50 -u admin -p Pass123 -c 'net user'
 # Use nthash instead of password
 authfinder 10.0.0.1-10 -u admin -H :{32-bit-hash} -c whoami
 
+# Use local SAM authentication instead of domain auth
+authfinder 10.0.0.1-10 -u admin -p Pass123 (-H :{32-bit-hash}) -c whoami --local-auth
+
 # Pass list of creds
 authfinder 10.0.0.1-10 -f creds.txt -c whoami
 ```

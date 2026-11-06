@@ -148,7 +148,7 @@ def check_port(ip, port, timeout=0.05):
         sock.settimeout(timeout)
         result = sock.connect_ex((ip, port))
         return result == 0
-    except:
+    except OSError:
         return False
     finally:
         sock.close()
